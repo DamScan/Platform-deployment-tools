@@ -1,0 +1,68 @@
+# -*- mode: ruby -*- 
+# vi: set ft=ruby : 
+
+Vagrant.configure("2") do |config|
+    config.vm.box = "bento/ubuntu-20.04"
+  
+    config.vm.provider "virtualbox" do |v|
+        v.memory = 1024
+        v.cpus = 1
+    end
+  
+    # Vm name
+    config.vm.hostname = "Bootstrap-vm"
+  
+    # Enable SSH agent forwarding
+    config.ssh.forward_agent = true
+  
+    # Vboxsf share for repos - mount the parent dir of this repo as devel
+    config.vm.synced_folder "../..", "/home/vagrant/dev", mount_options: ["fmode=744,dmode=755"]
+  
+    # Rsync-based folder for repos - run 'vagrant rsync' from the vagrant dir to copy
+    # latest files into the VM, from parent of repo (e.g. if host path to repo is
+    # ~/mydev/project, rsync ~/mydevel into Vagrant as ~/dev)
+    # config.vm.synced_folder "../..", "/home/vagrant/dev"
+    # Vboxsf share for scratch files to be shared between Linux and Windows -
+    # requires a sibling directory to 'devel' dir (in parent dir of 'devel'), called 'scratch'
+    config.vm.synced_folder "../../../scratch", "/home/vagrant/scratch", mount_options: ["fmode=644,dmode=755"]
+  
+    # Copies ssh keys from ~/.ssh/ (public and private) into the the virtual machine.
+    # ~/.ssh/id_rsa and ~/.ssh/id_rsa.pub are copied by default unless another keyname is stated. (eg. "SSH_KEYNAME='<myuser>/gen-admin' vagrant provision"
+    # Will copy ~/.ssh/<myuser>/gen-admin and ~/.ssh/<myuser>/gen-admin.pub .
+    # This has been set up to be idempotent so it is safe to re-run.
+    # Based on the solution found at https://stackoverflow.com/a/48736988
+    config.vm.provision "shell", privileged: false do |s| # run as vagrant user
+      ssh_prv_key = ""
+      ssh_pub_key = ""
+      SSH_KEYNAME = ENV['SSH_KEYNAME'] || 'id_rsa'  # Set SSH_KEYNAME as id_rsa, if not previously defined.
+  
+      # Get the ssh keys if they exist
+      if ! File.file?("#{Dir.home}/.ssh/#{SSH_KEYNAME}")
+        s.inline = "echo 'No SSH key found. You will need to remedy this before pushing to the repository.'"
+  
+      else
+        ssh_prv_key = File.read("#{Dir.home}/.ssh/#{SSH_KEYNAME}")
+        ssh_pub_key = File.readlines("#{Dir.home}/.ssh/#{SSH_KEYNAME}.pub").first.strip
+  
+        # Adds the ssh keys only if they do not already exisit in authorized_keys.
+        s.inline = <<-SHELL
+          if grep -sq "#{ssh_pub_key}" $HOME/.ssh/authorized_keys; then
+            echo "SSH keys already provisioned."
+            exit 0;
+          fi
+          echo "SSH key provisioning."
+          ssh_path=$(dirname $HOME/.ssh/#{SSH_KEYNAME})
+          mkdir -p $ssh_path
+          chmod 700 $HOME/.ssh/
+          touch $HOME/.ssh/authorized_keys
+          echo #{ssh_pub_key} >> $HOME/.ssh/authorized_keys
+          echo #{ssh_pub_key} > $HOME/.ssh/#{SSH_KEYNAME}.pub
+          chmod 644 $HOME/.ssh/#{SSH_KEYNAME}.pub
+          echo "#{ssh_prv_key}" > $HOME/.ssh/#{SSH_KEYNAME}
+          chmod 600 $HOME/.ssh/#{SSH_KEYNAME}
+          echo "Type 'ssh-add ~/.ssh/#{SSH_KEYNAME}' to add the key to the VM"
+          exit 0
+        SHELL
+      end
+    end
+  end
