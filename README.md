@@ -11,5 +11,7 @@ On your host, you must have [Vagrant](https://www.vagrantup.com/downloads) and [
 
 ## Basic Usage
 
-Swith into path `/vagrant`
+Switch into path `/vagrant`
+
+Hit `vagrant up` for building vm and after vagrant release a prompt, connect into your vm with `vagrant ssh`
 
